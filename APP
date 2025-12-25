@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+from tkinter import * 
+from tkinter import colorchooser
+from tkinter import messagebox
+from tkinter import ttk
+import serial
+from serial.tools import list_ports
+
+    
+#/dev/ttyACM0
+root = Tk()
+root.title('LED Controller')
+
+r_, g_, b_ = 0.0, 0.0, 0.0              # main vlalue RGB
+rgb_text = StringVar()                  # show what value u choosed
+rgb_text.set('R: 0 | G: 0 | B: 0')
+
+ports = []                              # all usb ports at PC
+ports_ = list_ports.comports()
+for p in ports_:
+    ports.append(p.device)
+
+def connect_serial(event):              # try to connect whith choosed ubs ports
+    global serial_
+    selected_port = port_box.get()
+    try:
+        serial_ = serial.Serial(selected_port, 115200, timeout=1)
+        return True
+    except serial.SerialException as e:
+        retry = messagebox.askretrycancel(
+            "ESP32 not found",
+            f"Driver at ({selected_port}) dosen't Exist.\n\n Try again or exit."
+        )
+        if retry:
+            return connect_serial(event)
+
+
+port_var = StringVar()                     # choose port
+port_box = ttk.Combobox(
+    root,
+    textvariable=port_var,
+    values=ports,
+    state="readonly",
+    width=50
+)
+
+port_box.pack(padx=10, pady=10)
+port_box.set("Wybierz port")
+port_box.bind("<<ComboboxSelected>>", connect_serial)
+
+def set_color(r, g, b):                                 # show rgb value as label
+    hex_color = f"#{r:02x}{g:02x}{b:02x}"
+    color.itemconfig(rect, fill=hex_color)
+    rgb_text.set(f'R: {r} | G: {g} | B: {b}')
+
+def send_data(r, g, b):                                 # send data with UART
+    global r_, g_, b_
+    try:
+        serial_.write(f"{r_},{g_},{b_}\n".encode())
+        set_color(r_, g_, b_)
+    except NameError:
+        messagebox.showerror("ERROR", "Choose USB Port")
+
+def choose_color():                                     # color picker
+    global r_, g_, b_
+    color_code = colorchooser.askcolor(title ="Choose color") 
+    r_, g_, b_ = color_code[0]
+    brightness.set((r_ + g_ + b_) / (3 * 255) * 100)
+    send_data(r_, g_, b_)
+
+def white():                                            # white / full brightness
+    global r_, g_, b_
+    r_, g_, b_ = 255, 255, 255
+    brightness.set((r_ + g_ + b_) / (3 * 255) * 100)
+    send_data(r_, g_, b_)
+    set_color(r_, g_, b_)
+
+def turn_off():                                         # off
+    global r_, g_, b_
+    r_, g_, b_ = 0, 0, 0
+    send_data(r_, g_, b_)
+    set_color(r_, g_, b_)
+
+def rgb_fields():                                      # text fields
+    global r_, g_, b_
+    if not e1.get() == '':
+        r_ = int(e1.get())
+    else:
+        r_ = 0
+    if not e2.get() == '':
+        g_ = int(e2.get())
+    else:
+        g_ = 0
+    if not e3.get() == '':
+        b_ = int(e3.get())
+    else:
+        b_ = 0
+    e1.delete(0, END)
+    e2.delete(0, END)
+    e3.delete(0, END)
+    brightness.set((r_ + g_ + b_) / (3 * 255) * 100)
+    send_data(r_, g_, b_)
+    set_color(r_, g_, b_)
+
+
+def brightness_callback(val):                           # math for brightnes
+    global r_, g_, b_
+    r = r_ * (float(val) / 100)
+    g = g_ * (float(val) / 100)
+    b = b_ * (float(val) / 100)
+    send_data(int(r), int(g), int(b))
+    set_color(int(r), int(g), int(b))
+
+color = Canvas(root, width=100, height=100)                                    # GUI stuff
+color.pack(padx=10, pady=10)
+rect = color.create_rectangle(10, 10, 90, 90, fill="#000000")
+
+label = Label(root, textvariable=rgb_text)
+label.pack()
+
+button_color_picker = Button(root, text = "Select color",
+                   command = choose_color)
+button_color_picker.pack(pady=10)
+
+button_white = Button(root, text = "LIGHT",
+                   command = white)
+button_white.pack(pady=10)
+
+button_turn_off = Button(root, text = "Turn Off",
+                   command = turn_off)
+button_turn_off.pack(pady=10)
+
+frame = Frame(root)
+frame.pack(padx=10, pady=10)
+l1 = Label(frame, text='R:')
+e1 = Entry(frame, width=5)
+l2 = Label(frame, text='G:')
+e2 = Entry(frame, width=5)
+l3 = Label(frame, text='B:')
+e3 = Entry(frame, width=5)
+b = Button(root, text='submit', command=rgb_fields)
+
+
+l1.pack(side=LEFT, padx=2)
+e1.pack(side=LEFT, padx=5)
+l2.pack(side=LEFT, padx=2)
+e2.pack(side=LEFT, padx=5)
+l3.pack(side=LEFT, padx=2)
+e3.pack(side=LEFT, padx=5)
+b.pack()
+
+brightness = Scale(root, from_=0, to=100, orient=HORIZONTAL, command=brightness_callback)
+brightness.pack(pady=10)
+brightness.set(100)
+
+
+root.geometry("300x500")
+root.mainloop()
